@@ -39,8 +39,6 @@ nano firewall.sh
 Conteúdo:
 
 #!/bin/bash
-## Projeto Firewall com iptables
-## Objetivo: Permitir apenas HTTP/HTTPS, restringir SSH externo e logar tentativas bloqueadas
 
 echo "Aplicando regras de firewall..."
 
