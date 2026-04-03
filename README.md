@@ -1,143 +1,190 @@
-# Projeto Firewall com iptables
+# Firewall com iptables
 
-## Introdução
-Este projeto tem como objetivo implementar e validar um **firewall com iptables** em uma máquina virtual (VM) Ubuntu Server.  
-A ideia é permitir apenas tráfego HTTP/HTTPS, restringir conexões SSH externas e registrar tentativas bloqueadas em log.  
+## Visão Geral
 
-O projeto foi desenvolvido em ambiente de laboratório utilizando **VirtualBox** e documentado passo a passo para fins de estudo e prática em **CCST Networking**.
+Este projeto demonstra a implementação de um firewall utilizando iptables em uma máquina virtual Ubuntu Server.  
+O objetivo é restringir o tráfego de entrada, permitindo apenas HTTP e HTTPS, limitar acesso SSH e registrar tentativas bloqueadas.
+
+O ambiente foi construído em laboratório utilizando virtualização para fins de estudo em redes e segurança.
 
 ---
 
-## Criação da VM
+## Ambiente
 
-### Requisitos
-- VirtualBox ou VMware Workstation Player
-- ISO do Ubuntu Server 22.04 LTS
-- Host: Windows 11
+- Hypervisor: VirtualBox ou VMware Workstation Player  
+- Sistema operacional da VM: Ubuntu Server 22.04 LTS  
+- Host: Windows 11  
 
 ### Configuração da VM
-- Nome: `firewall-lab`
-- Memória: 2 GB
-- Disco: 20 GB
-- Rede: **Bridge Adapter** (para estar na mesma rede que o host)
-- Sistema Operacional: Ubuntu Server 22.04 LTS
 
-### Instalação
-Dentro da VM Ubuntu:
+- Nome: firewall-lab  
+- Memória: 2 GB  
+- Disco: 20 GB  
+- Rede: Bridge Adapter  
+
+---
+
+## Instalação
+
+```bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install iptables iptables-persistent openssh-server apache2 -y
+```
 
-- iptables → firewall
-- iptables-persistent → salvar regras após reboot
-- openssh-server → serviço SSH para testes
-- apache2 → servidor web para validar portas abertas
+Componentes instalados:
 
-### Configuração do Firewall
-Crie o arquivo firewall.sh dentro da VM:
+- iptables: controle de firewall  
+- iptables-persistent: persistência das regras  
+- openssh-server: acesso remoto para testes  
+- apache2: serviço HTTP para validação  
+
+---
+
+## Configuração do Firewall
+
+Criar o script:
+
+```bash
 nano firewall.sh
+```
 
 Conteúdo:
 
+```bash
 #!/bin/bash
-## Projeto Firewall com iptables
-## Objetivo: Permitir apenas HTTP/HTTPS, restringir SSH externo e logar tentativas bloqueadas
 
 echo "Aplicando regras de firewall..."
 
-### Limpar regras existentes
 iptables -F
 iptables -X
 iptables -t nat -F
 iptables -t nat -X
 
-### Definir políticas padrão
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
 iptables -P OUTPUT ACCEPT
 
-### Permitir tráfego local (loopback)
 iptables -A INPUT -i lo -j ACCEPT
 
-### Permitir conexões já estabelecidas
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-### Permitir HTTP e HTTPS
 iptables -A INPUT -p tcp -m multiport --dports 80,443 -j ACCEPT
 
-### SSH: permitir apenas da rede interna (exemplo 192.168.100.0/24)
 iptables -A INPUT -p tcp --dport 22 -s 192.168.100.0/24 -j ACCEPT
 iptables -A INPUT -p tcp --dport 22 -j DROP
 
-### Logar tentativas bloqueadas
 iptables -A INPUT -j LOG --log-prefix "IPTABLES-DROP: "
 
 echo "Regras aplicadas com sucesso!"
+```
 
-Salvar e executar:
+Aplicar e persistir:
 
+```bash
 chmod +x firewall.sh
 sudo ./firewall.sh
 sudo netfilter-persistent save
 sudo netfilter-persistent reload
+```
 
-### Testes
-1. HTTP (porta 80)
-No host (Windows):
-curl http://192.168.100.12 # IP da VM
+---
 
-Resultado: resposta HTML da página padrão do Apache.
+## Validação
 
-2. HTTPS (porta 443)
-curl -I https://192.168.100.12 # IP da VM
+### HTTP
 
-Resultado: cabeçalhos HTTPS (se configurado).
+```bash
+curl http://192.168.100.12
+```
 
-3. SSH bloqueado (externo)
-curl http://192.168.100.12:22 # IP da VM
+Resultado esperado: resposta HTTP do Apache.
 
-Resultado: erro de conexão (timeout), indicando bloqueio externo.
+---
 
-4. SSH interno (permitido)
+### HTTPS
+
+```bash
+curl -I https://192.168.100.12
+```
+
+Resultado esperado: retorno de cabeçalhos HTTPS (se configurado).
+
+---
+
+### SSH externo
+
+```bash
+curl http://192.168.100.12:22
+```
+
+Resultado esperado: timeout ou falha de conexão.
+
+---
+
+### SSH local
+
+```bash
 ssh localhost
+```
 
-Resultado: conexão bem-sucedida, confirmando que o serviço está ativo e o firewall permite acesso local.
+Resultado esperado: conexão estabelecida.
 
-5. Escaneamento com nmap
-No host:
-nmap -Pn 192.168.100.11
+---
 
-Resultado: porta 80 aberta, porta 22 filtrada/fechada.
+### Varredura de portas
 
-6. Logs de bloqueio
+```bash
+nmap -Pn 192.168.100.12
+```
+
+Resultado esperado: porta 80 aberta e porta 22 filtrada.
+
+---
+
+### Logs
+
+```bash
 sudo tail -f /var/log/syslog | grep IPTABLES
+```
 
-Resultado: registros de tentativas bloqueadas.
+Resultado esperado: registros de pacotes bloqueados.
+
+---
 
 ## Resultados
-- Porta 80 (HTTP) → aberta e acessível
-- Porta 443 (HTTPS) → aberta (se configurado)
-- Porta 22 (SSH) → bloqueada externamente, acessível internamente
-- Tentativas bloqueadas registradas em log
+
+- Porta 80 (HTTP): acessível  
+- Porta 443 (HTTPS): acessível (quando configurado)  
+- Porta 22 (SSH): restrita à rede interna  
+- Logs de bloqueio ativos  
+
+---
 
 ## Topologia
+
+```
 +------------------+           +------------------+
-|   Host Windows   |  <---->   |   VM Ubuntu      |
-| 192.168.100.5    |           | 192.168.100.12   |
-| curl / nmap      |           | iptables + Apache|
+| Host             |           | VM Ubuntu        |
+| 192.168.100.5    | <-------> | 192.168.100.12   |
+| curl / nmap      |           | iptables         |
 +------------------+           +------------------+
+```
+
+---
 
 ## Estrutura do Repositório
+
+```
 firewall-iptables/
-├── firewall.sh        # Script com regras iptables
-├── README.md          # Documentação completa
-└── resultados/        # Capturas de tela dos testes (opcional)
+├── firewall.sh
+├── README.md
+└── resultados/
+```
 
-## Conclusão
-Este projeto demonstrou a criação de um firewall com iptables em ambiente de laboratório.
-Foi possível validar:
-- Configuração de regras de acesso
-- Bloqueio seletivo de serviços
-- Registro de tentativas em log
-- Integração com serviços reais (Apache e SSH)
+---
 
-O repositório serve como guia prático para quem deseja aprender iptables e segurança de rede em ambiente controlado.
+## Considerações
+
+A configuração utiliza política padrão restritiva (deny by default), liberando apenas serviços necessários.  
+O uso de logs permite rastreabilidade de tentativas de acesso indevido.  
+O cenário pode ser expandido com regras adicionais, integração com fail2ban ou migração para nftables.
